@@ -26,7 +26,7 @@ var x = 20;
 var y = 20;
 // gameGraphics.drawRect(x, y, 20, 20);
 
-socket.on("updatePos", ({x: newX, y: newY}) => {
+socket.on("updatePos", ({ x: newX, y: newY }) => {
   x = newX;
   y = newY;
   gameGraphics.clear();
@@ -35,22 +35,46 @@ socket.on("updatePos", ({x: newX, y: newY}) => {
   gameGraphics.drawRect(x, y, 20, 20);
 });
 
-
-
-
-window.addEventListener("keydown", e => {
-  switch(e.key) {
+const keyData = { up: false, right: false, down: false, left: false };
+window.addEventListener("keydown", (e) => {
+  switch (e.key) {
     case "ArrowUp":
-      socket.emit('movePlayer', 'up');
+      keyData.up = true;
       break;
     case "ArrowRight":
-      socket.emit('movePlayer', 'right');
+      keyData.right = true;
       break;
     case "ArrowDown":
-      socket.emit('movePlayer', 'down');
+      keyData.down = true;
       break;
     case "ArrowLeft":
-      socket.emit('movePlayer', 'left');
+      keyData.left = true;
       break;
   }
 });
+
+window.addEventListener("keyup", (e) => {
+  switch (e.key) {
+    case "ArrowUp":
+      keyData.up = false;
+      break;
+    case "ArrowRight":
+      keyData.right = false;
+      break;
+    case "ArrowDown":
+      keyData.down = false;
+      break;
+    case "ArrowLeft":
+      keyData.left = false;
+      break;
+  }
+});
+
+var clientLoopVar;
+function clientLoop() {
+  socket.emit("movePlayer", keyData);
+  clientLoopVar = setTimeout(clientLoop, 15);
+}
+
+clientLoop();
+

@@ -14,21 +14,15 @@ app.get("/", (req, res) =>
 io.on("connection", (socket) => {
   console.log("user connected");
 
-  socket.on('movePlayer', (data) => {
-    switch(data) {
-      case "up":
-        y -= 5;
-        break;
-      case "right":
-        x += 5;
-        break;
-      case "down":
-        y += 5;
-        break;
-      case "left":
-        x -= 5;
-        break;
-    }
+  socket.on('movePlayer', ({up, down, left, right}) => {
+    if (up)
+      y -= 2;
+    if (right)
+      x += 2;
+    if (down)
+      y += 2;
+    if (left)
+      x -= 2;
   });
 
   socket.on("disconnect", () => console.log("user disconnected"));

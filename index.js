@@ -12,28 +12,40 @@ app.get("/", (req, res) =>
 );
 
 const playerPositions = {};
+const playerInputs = {};
+const playerColors = {};
+
+const randRange = (min, max) => Math.floor(Math.random() * (max - min)) + min;
 
 io.on("connection", (socket) => {
-  playerID = Math.floor(Math.random() * 100000) + 1;
+  let playerID = randRange(0, 100000);
   console.log(`user ${playerID} connected`);
 
   playerPositions[playerID] = {x: 20, y: 20}
+  playerInputs[playerID] = {up: false, right: false, down: false, left: false}
+  playerColors[playerID] = randRange(0, 16777216)
   socket.emit('clientConnected', playerID);
+  io.emit('updatePlayerColors', playerColors);
 
-  socket.on('movePlayer', ({playerNum, keyData: {up, down, left, right}}) => {
-    if (up)
-      playerPositions[playerNum].y -= 2;
-    if (right)
-      playerPositions[playerNum].x += 2;
-    if (down)
-      playerPositions[playerNum].y += 2;
-    if (left)
-      playerPositions[playerNum].x -= 2;
+  // socket.on('movePlayer', ({playerNum, keyData: {up, down, left, right}}) => {
+  //   if (up)
+  //     playerPositions[playerNum].y -= 2;
+  //   if (right)
+  //     playerPositions[playerNum].x += 2;
+  //   if (down)
+  //     playerPositions[playerNum].y += 2;
+  //   if (left)
+  //     playerPositions[playerNum].x -= 2;
+  // });
+  socket.on('updatePlayerInput', ({playerNum, keyData}) => {
+    playerInputs[playerNum] = keyData;
   });
 
   socket.on("disconnect", () => {
     console.log(`user ${playerID} disconnected`);
     delete playerPositions[playerID];
+    delete playerInputs[playerID];
+    delete playerColors[playerID];
   });
 });
 // io.on("disconnect", (socket) => console.log("user connected"));
@@ -54,7 +66,21 @@ function serverLoop() {
   serverLoopVar = setTimeout(serverLoop, 45);
 }
 
-serverLoop();
+var serverPhysicsLoopVar;
+function serverPhysicsLoop() {
+  for (entry of Object.entries(playerInputs)) {
+    if (entry[0] > 0 && playerPositions[entry[0]]) {
+      if (entry[1].up) playerPositions[entry[0]].y -= 2;
+      if (entry[1].right) playerPositions[entry[0]].x += 2;
+      if (entry[1].down) playerPositions[entry[0]].y += 2;
+      if (entry[1].left) playerPositions[entry[0]].x -= 2; 
+    }
+  }
 
+  serverPhysicsLoopVar = setTimeout(serverPhysicsLoop, 15);
+}
+
+serverLoop();
+serverPhysicsLoop();
 
 

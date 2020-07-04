@@ -26,15 +26,20 @@ gameGraphics.beginFill(0xff0000);
 var x = 20;
 var y = 20;
 // gameGraphics.drawRect(x, y, 20, 20);
-var playerPositions;
+var playerPositions = {};
+var playerColors = {};
 
 function drawSquares() {
   gameGraphics.clear();
   gameGraphics.lineStyle(0, 0xff0000);
-  gameGraphics.beginFill(0xff0000);
-
+  
   if (playerPositions) {
     for (entry of Object.entries(playerPositions)) {
+      if (playerColors[entry[0]]) {
+        gameGraphics.beginFill(playerColors[entry[0]]);
+      } else {
+        gameGraphics.beginFill(0xff0000);
+      }
       gameGraphics.drawRect(entry[1].x, entry[1].y, 20, 20);
     }
   }
@@ -42,7 +47,11 @@ function drawSquares() {
 
 socket.on("clientConnected", (newPlayerNum) => {
   playerNum = newPlayerNum;
-  console.log(playerNum);
+  console.log("Connected with ID", playerNum);
+});
+
+socket.on("updatePlayerColors", (newPlayerColors) => {
+  playerColors = newPlayerColors;
 });
 
 socket.on("updatePos", (newPlayerPositions) => {
@@ -66,6 +75,8 @@ window.addEventListener("keydown", (e) => {
       keyData.left = true;
       break;
   }
+  
+  socket.emit('updatePlayerInput', {playerNum, keyData});
 });
 
 window.addEventListener("keyup", (e) => {
@@ -83,6 +94,8 @@ window.addEventListener("keyup", (e) => {
       keyData.left = false;
       break;
   }
+
+  socket.emit('updatePlayerInput', {playerNum, keyData});
 });
 
 var curTime = Date.now();
@@ -91,14 +104,16 @@ function clientLoop() {
   // console.log(Date.now() - curTime);
   // curTime = Date.now();
 
-  if (keyData.up) playerPositions[playerNum].y -= 2;
-  if (keyData.right) playerPositions[playerNum].x += 2;
-  if (keyData.down) playerPositions[playerNum].y += 2;
-  if (keyData.left) playerPositions[playerNum].x -= 2;
+  if (playerNum > 0 && playerPositions[playerNum]) {
+    if (keyData.up) playerPositions[playerNum].y -= 2;
+    if (keyData.right) playerPositions[playerNum].x += 2;
+    if (keyData.down) playerPositions[playerNum].y += 2;
+    if (keyData.left) playerPositions[playerNum].x -= 2;
+  }
 
   drawSquares();
 
-  socket.emit("movePlayer", { playerNum, keyData });
+  // socket.emit("movePlayer", { playerNum, keyData });
   clientLoopVar = setTimeout(clientLoop, 15);
 }
 

@@ -1,6 +1,7 @@
 var socket = io();
 
 const textP = document.getElementById("text");
+var playerNum = -1;
 
 socket.on("printChar", (data) => {
   console.log(data);
@@ -25,14 +26,28 @@ gameGraphics.beginFill(0xff0000);
 var x = 20;
 var y = 20;
 // gameGraphics.drawRect(x, y, 20, 20);
+var playerPositions;
 
-socket.on("updatePos", ({ x: newX, y: newY }) => {
-  x = newX;
-  y = newY;
+function drawSquares() {
   gameGraphics.clear();
   gameGraphics.lineStyle(0, 0xff0000);
   gameGraphics.beginFill(0xff0000);
-  gameGraphics.drawRect(x, y, 20, 20);
+
+  if (playerPositions) {
+    for (entry of Object.entries(playerPositions)) {
+      gameGraphics.drawRect(entry[1].x, entry[1].y, 20, 20);
+    }
+  }
+}
+
+socket.on("clientConnected", (newPlayerNum) => {
+  playerNum = newPlayerNum;
+  console.log(playerNum);
+});
+
+socket.on("updatePos", (newPlayerPositions) => {
+  // console.log(playerPositions, playerNum, playerPositions[playerNum]);
+  playerPositions = newPlayerPositions;
 });
 
 const keyData = { up: false, right: false, down: false, left: false };
@@ -70,11 +85,21 @@ window.addEventListener("keyup", (e) => {
   }
 });
 
+var curTime = Date.now();
 var clientLoopVar;
 function clientLoop() {
-  socket.emit("movePlayer", keyData);
+  // console.log(Date.now() - curTime);
+  // curTime = Date.now();
+
+  if (keyData.up) playerPositions[playerNum].y -= 2;
+  if (keyData.right) playerPositions[playerNum].x += 2;
+  if (keyData.down) playerPositions[playerNum].y += 2;
+  if (keyData.left) playerPositions[playerNum].x -= 2;
+
+  drawSquares();
+
+  socket.emit("movePlayer", { playerNum, keyData });
   clientLoopVar = setTimeout(clientLoop, 15);
 }
 
 clientLoop();
-

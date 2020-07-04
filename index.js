@@ -11,37 +11,46 @@ app.get("/", (req, res) =>
   res.sendFile("public/index.html", { root: __dirname })
 );
 
-io.on("connection", (socket) => {
-  console.log("user connected");
+const playerPositions = {};
 
-  socket.on('movePlayer', ({up, down, left, right}) => {
+io.on("connection", (socket) => {
+  playerID = Math.floor(Math.random() * 100000) + 1;
+  console.log(`user ${playerID} connected`);
+
+  playerPositions[playerID] = {x: 20, y: 20}
+  socket.emit('clientConnected', playerID);
+
+  socket.on('movePlayer', ({playerNum, keyData: {up, down, left, right}}) => {
     if (up)
-      y -= 2;
+      playerPositions[playerNum].y -= 2;
     if (right)
-      x += 2;
+      playerPositions[playerNum].x += 2;
     if (down)
-      y += 2;
+      playerPositions[playerNum].y += 2;
     if (left)
-      x -= 2;
+      playerPositions[playerNum].x -= 2;
   });
 
-  socket.on("disconnect", () => console.log("user disconnected"));
+  socket.on("disconnect", () => {
+    console.log(`user ${playerID} disconnected`);
+    delete playerPositions[playerID];
+  });
 });
-io.on("disconnect", (socket) => console.log("user connected"));
+// io.on("disconnect", (socket) => console.log("user connected"));
 
-http.listen(3000, () =>
+http.listen(port, '0.0.0.0', () =>
   console.log(`Multiplayer app listening at http://localhost:${port}`)
 );
 
-var x = 20,
-  y = 20;
+// var x = 20,
+//   y = 20;
 
 var serverLoopVar;
 function serverLoop() {
   // io.emit('printChar', 'L');
   // x += 1;
   // y += 1;
-  io.emit("updatePos", { x, y });
+  io.emit("updatePos", playerPositions);
   serverLoopVar = setTimeout(serverLoop, 45);
 }
 

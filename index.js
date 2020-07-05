@@ -5,6 +5,8 @@ const io = require("socket.io")(http);
 
 const port = 3000;
 
+const PLAYER_SPEED_PER_MS = .15; //Player speed per millisecond
+
 app.use(express.static("public"));
 
 app.get("/", (req, res) =>
@@ -62,25 +64,29 @@ function serverLoop() {
   // io.emit('printChar', 'L');
   // x += 1;
   // y += 1;
-  io.emit("updatePos", playerPositions);
+  io.emit("updatePos", {playerPositions, time: Date.now()});
   serverLoopVar = setTimeout(serverLoop, 45);
 }
 
 var serverPhysicsLoopVar;
-function serverPhysicsLoop() {
+function serverPhysicsLoop(prevTime) {
+  const curTime = Date.now();
+  const deltaTime = curTime - prevTime;
+  // console.log(deltaTime);
+
   for (entry of Object.entries(playerInputs)) {
     if (entry[0] > 0 && playerPositions[entry[0]]) {
-      if (entry[1].up) playerPositions[entry[0]].y -= 2;
-      if (entry[1].right) playerPositions[entry[0]].x += 2;
-      if (entry[1].down) playerPositions[entry[0]].y += 2;
-      if (entry[1].left) playerPositions[entry[0]].x -= 2; 
+      if (entry[1].up) playerPositions[entry[0]].y -= PLAYER_SPEED_PER_MS * deltaTime;
+      if (entry[1].right) playerPositions[entry[0]].x += PLAYER_SPEED_PER_MS * deltaTime;
+      if (entry[1].down) playerPositions[entry[0]].y += PLAYER_SPEED_PER_MS * deltaTime;
+      if (entry[1].left) playerPositions[entry[0]].x -= PLAYER_SPEED_PER_MS * deltaTime; 
     }
   }
 
-  serverPhysicsLoopVar = setTimeout(serverPhysicsLoop, 15);
+  serverPhysicsLoopVar = setTimeout(() => serverPhysicsLoop(curTime), 15);
 }
 
 serverLoop();
-serverPhysicsLoop();
+serverPhysicsLoop(Date.now());
 
 

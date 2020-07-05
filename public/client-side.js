@@ -125,6 +125,21 @@ window.addEventListener("keyup", (e) => {
 
 const INTERPOLATION_DISPLAY_MS = 100;
 
+function getWrappingTimesIndex(timestamp, timeQueue) {
+  index = 0;
+  if (timeQueue.length < 2) {
+    return -1;
+  }
+
+  while (timeQueue[index+1][0] < timestamp) {
+    index += 1;
+
+    if (index >= timeQueue.length) return -1;
+  }
+
+  return index;
+}
+
 var clientPhysicsLoopVar;
 function clientPhysicsLoop(prevTime) {
   const curTime = Date.now();
@@ -150,7 +165,7 @@ function clientPhysicsLoop(prevTime) {
 
       // console.log(curTime, (posQueue.length > 0) ? posQueue[0][0] : "NONE", INTERPOLATION_DISPLAY_MS, posQueue.length > 0 && posQueue[0][0] < curTime - INTERPOLATION_DISPLAY_MS, curTime - INTERPOLATION_DISPLAY_MS);
       // console.log(posQueue.length > 0, posQueue[0][0] < curTime - INTERPOLATION_DISPLAY_MS, posQueue[0][0], curTime - INTERPOLATION_DISPLAY_MS);
-      while (posQueue.length > 0 && posQueue[0][0] < curTime - INTERPOLATION_DISPLAY_MS) {
+      while (posQueue.length > 0 && posQueue[0][0] < curTime - INTERPOLATION_DISPLAY_MS*2) {
         posQueue.shift();
       }
 
@@ -162,10 +177,16 @@ function clientPhysicsLoop(prevTime) {
         if (posQueue.length == 1) {
           displayPositions[entry[0]] = posQueue[0][1];
         } else {
-          const percentThru = ((curTime - INTERPOLATION_DISPLAY_MS) - posQueue[0][0]) / (posQueue[1][0] - posQueue[0][0]);
-          const newX = (posQueue[1][1].x - posQueue[0][1].x) * percentThru + posQueue[0][1].x;
-          const newY = (posQueue[1][1].y - posQueue[0][1].y) * percentThru + posQueue[0][1].y;
-          displayPositions[entry[0]] = {x: newX, y: newY};
+          const i = getWrappingTimesIndex(curTime - INTERPOLATION_DISPLAY_MS, posQueue);
+          if (i > 0) {
+            const percentThru = ((curTime - INTERPOLATION_DISPLAY_MS) - posQueue[i][0]) / (posQueue[i+1][0] - posQueue[i][0]);
+            // console.log(curTime, INTERPOLATION_DISPLAY_MS, posQueue[0][0], posQueue[1][0], posQueue[0][0]);
+            // console.log(((curTime - INTERPOLATION_DISPLAY_MS) - posQueue[0][0]), (posQueue[1][0] - posQueue[0][0]));
+            // console.log(percentThru);
+            const newX = (posQueue[i+1][1].x - posQueue[i][1].x) * percentThru + posQueue[i][1].x;
+            const newY = (posQueue[i+1][1].y - posQueue[i][1].y) * percentThru + posQueue[i][1].y;
+            displayPositions[entry[0]] = {x: newX, y: newY};  
+          }
         }
       }
     }

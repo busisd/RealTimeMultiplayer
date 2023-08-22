@@ -3,6 +3,16 @@ const app = express();
 const http = require("http").createServer(app);
 const io = require("socket.io")(http);
 
+/**
+ * TODO:
+ *  - nanotimer
+ *  - better session management
+ *    - use a property of the connection instead of trusting player to send id
+ *  - revamp what data is sent from server-to-client
+ *  - make sure disconnected users disappear
+ *  - consolidate server loop
+ */
+
 const port = 3000;
 
 const PLAYER_SPEED_PER_MS = .15; //Player speed per millisecond
@@ -52,8 +62,8 @@ io.on("connection", (socket) => {
 });
 // io.on("disconnect", (socket) => console.log("user connected"));
 
-http.listen(port, '0.0.0.0', () =>
-  console.log(`Multiplayer app listening at http://localhost:${port}`)
+http.listen(port, () =>
+  console.log(`Multiplayer app listening on port: ${port}`)
 );
 
 // var x = 20,

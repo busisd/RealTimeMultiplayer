@@ -3,15 +3,10 @@
   "version": "1.0.0",
   "description": "A project made to experiment with real time multiplayer in HTML5",
   "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "express": "^4.17.1",
-    "http": "0.0.1-security",
-    "pixi.js": "^5.3.0",
-    "socket.io": "^2.3.0"
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2"
   }
 }

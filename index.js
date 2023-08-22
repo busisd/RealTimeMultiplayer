@@ -7,15 +7,22 @@ const io = require("socket.io")(http);
  * TODO:
  *  - nanotimer
  *  - better session management
- *    - use a property of the connection instead of trusting player to send id
+ *    - eventually let users enter/claim usernames so they can reconnect
  *  - revamp what data is sent from server-to-client
  *  - make sure disconnected users disappear
  *  - consolidate server loop
+ *  - define game coordinates and let client side rendering convert that
+ *  - use uuid
+ *  - client-side fps counter
+ *  - shared "physics" library for server and client
+ *  - track moves per-frame, then use latency + server-time to discard old moves
+ *    and recalculate whenever the server updates
+ *  - helper fxns for interpolation on client side
  */
 
 const port = 3000;
 
-const PLAYER_SPEED_PER_MS = .15; //Player speed per millisecond
+const PLAYER_SPEED_PER_MS = .25; //Player speed per millisecond
 
 app.use(express.static("public"));
 
@@ -30,50 +37,34 @@ const playerColors = {};
 const randRange = (min, max) => Math.floor(Math.random() * (max - min)) + min;
 
 io.on("connection", (socket) => {
-  let playerID = randRange(0, 100000);
-  console.log(`user ${playerID} connected`);
+  socket.data.playerId = randRange(0, 100000000).toString();
+  console.log(`User ${socket.data.playerId} connected`);
 
-  playerPositions[playerID] = {x: 20, y: 20}
-  playerInputs[playerID] = {up: false, right: false, down: false, left: false}
-  playerColors[playerID] = randRange(0, 16777216)
-  socket.emit('clientConnected', playerID);
+  playerPositions[socket.data.playerId] = {x: 20, y: 20}
+  playerInputs[socket.data.playerId] = {up: false, right: false, down: false, left: false}
+  playerColors[socket.data.playerId] = randRange(0, 16777216)
+
+  socket.emit('clientConnected', socket.data.playerId);
   io.emit('updatePlayerColors', playerColors);
 
-  // socket.on('movePlayer', ({playerNum, keyData: {up, down, left, right}}) => {
-  //   if (up)
-  //     playerPositions[playerNum].y -= 2;
-  //   if (right)
-  //     playerPositions[playerNum].x += 2;
-  //   if (down)
-  //     playerPositions[playerNum].y += 2;
-  //   if (left)
-  //     playerPositions[playerNum].x -= 2;
-  // });
-  socket.on('updatePlayerInput', ({playerNum, keyData}) => {
-    playerInputs[playerNum] = keyData;
+  socket.on('updatePlayerInput', ({keyData}) => {
+    playerInputs[socket.data.playerId] = keyData;
   });
 
   socket.on("disconnect", () => {
-    console.log(`user ${playerID} disconnected`);
-    delete playerPositions[playerID];
-    delete playerInputs[playerID];
-    delete playerColors[playerID];
+    console.log(`user ${socket.data.playerId} disconnected`);
+    delete playerPositions[socket.data.playerId];
+    delete playerInputs[socket.data.playerId];
+    delete playerColors[socket.data.playerId];
   });
 });
-// io.on("disconnect", (socket) => console.log("user connected"));
 
 http.listen(port, () =>
   console.log(`Multiplayer app listening on port: ${port}`)
 );
 
-// var x = 20,
-//   y = 20;
-
 var serverLoopVar;
 function serverLoop() {
-  // io.emit('printChar', 'L');
-  // x += 1;
-  // y += 1;
   io.emit("updatePos", {playerPositions, time: Date.now()});
   serverLoopVar = setTimeout(serverLoop, 45);
 }

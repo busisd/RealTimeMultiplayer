@@ -1,8 +1,8 @@
 var socket = io();
 
-const PLAYER_SPEED_PER_MS = .15; //Player speed per millisecond
+const PLAYER_SPEED_PER_MS = .25; //Player speed per millisecond
 
-var playerNum = -1;
+var playerId;
 
 // const textP = document.getElementById("text");
 
@@ -49,22 +49,44 @@ function drawSquares() {
   }
 }
 
-socket.on("clientConnected", (newPlayerNum) => {
-  playerNum = newPlayerNum;
-  console.log("Connected with ID", playerNum);
+socket.on("clientConnected", (newPlayerId) => {
+  playerId = newPlayerId;
+  console.log("Connected with ID", playerId);
 });
 
 socket.on("updatePlayerColors", (newPlayerColors) => {
   playerColors = newPlayerColors;
 });
 
+var playerStoredPositions = {};
+var playerStoredPositionsArr = [];
+var mainPlayerServerPosition;
+var mainPlayerClientPosition;
 socket.on("updatePos", ({playerPositions: newPlayerPositions, time}) => {
+  playerStoredPositions = newPlayerPositions;
+  const newPlayerPositionsEntry = {
+    timestamp: performance.now(),
+    positions: newPlayerPositions
+  }
+  playerStoredPositionsArr.push(newPlayerPositionsEntry);
+  if (playerStoredPositionsArr.length < 2) {
+    playerStoredPositionsArr.push(newPlayerPositionsEntry);
+  }
+  if (playerStoredPositionsArr.length > 2) {
+    playerStoredPositionsArr.shift();
+  }
+  mainPlayerServerPosition = { ...newPlayerPositions[playerId] };
+  if (mainPlayerClientPosition == null) {
+    mainPlayerClientPosition = { ...newPlayerPositions[playerId] };
+  }
+
+  // newestFrameTimestamp = performance.now();
   // console.log(playerPositions, playerNum, playerPositions[playerNum]);
   // playerPositions = newPlayerPositions;
   const clientTime = Date.now();
 
   for (entry of Object.entries(newPlayerPositions)) {
-    if (entry[0] == playerNum) {
+    if (entry[0] === playerId) {
       displayPositions[entry[0]] = entry[1];
     } else {
       if (playerPositions[entry[0]]) {
@@ -99,9 +121,14 @@ window.addEventListener("keydown", (e) => {
     case "ArrowLeft":
       keyData.left = true;
       break;
+    case "t":
+      // For testing
+      mainPlayerClientPosition.x += 50;
+      mainPlayerClientPosition.y += 50;
+      break;
   }
   
-  socket.emit('updatePlayerInput', {playerNum, keyData});
+  socket.emit('updatePlayerInput', { keyData });
 });
 
 window.addEventListener("keyup", (e) => {
@@ -120,7 +147,7 @@ window.addEventListener("keyup", (e) => {
       break;
   }
 
-  socket.emit('updatePlayerInput', {playerNum, keyData});
+  socket.emit('updatePlayerInput', { keyData });
 });
 
 const INTERPOLATION_DISPLAY_MS = 100;
@@ -145,11 +172,11 @@ function clientPhysicsLoop(prevTime) {
   const curTime = Date.now();
   const deltaTime = curTime - prevTime;
 
-  if (playerNum > 0 && displayPositions[playerNum]) {
-    if (keyData.up) displayPositions[playerNum].y -= PLAYER_SPEED_PER_MS * deltaTime;
-    if (keyData.right) displayPositions[playerNum].x += PLAYER_SPEED_PER_MS * deltaTime;
-    if (keyData.down) displayPositions[playerNum].y += PLAYER_SPEED_PER_MS * deltaTime;
-    if (keyData.left) displayPositions[playerNum].x -= PLAYER_SPEED_PER_MS * deltaTime;
+  if (playerId != null && displayPositions[playerId]) {
+    if (keyData.up) displayPositions[playerId].y -= PLAYER_SPEED_PER_MS * deltaTime;
+    if (keyData.right) displayPositions[playerId].x += PLAYER_SPEED_PER_MS * deltaTime;
+    if (keyData.down) displayPositions[playerId].y += PLAYER_SPEED_PER_MS * deltaTime;
+    if (keyData.left) displayPositions[playerId].x -= PLAYER_SPEED_PER_MS * deltaTime;
   }
 
   drawSquares();
@@ -158,7 +185,7 @@ function clientPhysicsLoop(prevTime) {
   // console.log(playerPositions);
   
   for (entry of Object.entries(playerPositions)) {
-    if (entry[0] != playerNum) {
+    if (entry[0] != playerId) {
       //entry = [playerID, [[time, {x: 20, y: 20}], ...]]
       // console.log("ENTRY[1]:", entry[1]);
       const posQueue = entry[1];
@@ -196,4 +223,62 @@ function clientPhysicsLoop(prevTime) {
   //TODO: Change this to RequestAnimationFrame
 }
 
-clientPhysicsLoop(Date.now());
+const FRAME_TIME_MS = 1000 / 60;
+const SERVER_TIME_MS = 1000 / 20;
+var newestFrameTimestamp = performance.now();
+function drawSquaresSimple(highResTime) {
+
+  if (mainPlayerClientPosition) {
+    while (highResTime > newestFrameTimestamp + FRAME_TIME_MS) {
+      // Move based on inputs
+      if (keyData.up) mainPlayerClientPosition.y -= PLAYER_SPEED_PER_MS * FRAME_TIME_MS;
+      if (keyData.right) mainPlayerClientPosition.x += PLAYER_SPEED_PER_MS * FRAME_TIME_MS;
+      if (keyData.down) mainPlayerClientPosition.y += PLAYER_SPEED_PER_MS * FRAME_TIME_MS;
+      if (keyData.left) mainPlayerClientPosition.x -= PLAYER_SPEED_PER_MS * FRAME_TIME_MS;
+  
+      // Move the player towards where the server believes them to be
+      mainPlayerClientPosition.x -= (mainPlayerClientPosition.x - mainPlayerServerPosition.x) * .2
+      mainPlayerClientPosition.y -= (mainPlayerClientPosition.y - mainPlayerServerPosition.y) * .2
+
+      newestFrameTimestamp += FRAME_TIME_MS;
+    }
+  }
+
+  let playerPredictedPosition;
+  if (mainPlayerClientPosition) {
+    playerPredictedPosition = {...mainPlayerClientPosition};
+    const frameInterpolationTime = highResTime - newestFrameTimestamp;
+    if (keyData.up) playerPredictedPosition.y -= PLAYER_SPEED_PER_MS * frameInterpolationTime;
+    if (keyData.right) playerPredictedPosition.x += PLAYER_SPEED_PER_MS * frameInterpolationTime;
+    if (keyData.down) playerPredictedPosition.y += PLAYER_SPEED_PER_MS * frameInterpolationTime;
+    if (keyData.left) playerPredictedPosition.x -= PLAYER_SPEED_PER_MS * frameInterpolationTime;
+  }
+
+  gameGraphics.clear();
+  gameGraphics.lineStyle(0, 0xff0000);
+  for (const [curPlayerId, curPosition] of Object.entries(playerStoredPositions)) {
+    if (playerColors[curPlayerId]) {
+      gameGraphics.beginFill(playerColors[curPlayerId]);
+    } else {
+      gameGraphics.beginFill(0xff0000);
+    }
+    // console.log(curPlayerId, playerId, playerStoredPositions, curPlayerId === playerId)
+    if (curPlayerId === playerId) {
+      gameGraphics.drawRect(playerPredictedPosition.x, playerPredictedPosition.y, 20, 20);
+    } else {
+      gameGraphics.drawRect(curPosition.x, curPosition.y, 20, 20);
+
+      // const interpolationFactor = // TODO;
+    }
+  }
+}
+
+function animationLoop(highResTime) {
+  drawSquaresSimple(highResTime);
+  window.requestAnimationFrame(animationLoop);
+}
+
+// Old physics/animation loop
+// clientPhysicsLoop(Date.now());
+// New physics/animation loop
+window.requestAnimationFrame(animationLoop);

@@ -52,6 +52,10 @@ io.on("connection", (socket) => {
     playerInputs[socket.data.playerId] = keyData;
   });
 
+  socket.on('checkPingRequest', ({ requestId }) => {
+    socket.emit('checkPingResponse', { requestId })
+  })
+
   socket.on("disconnect", () => {
     console.log(`user ${socket.data.playerId} disconnected`);
     delete playerPositions[socket.data.playerId];

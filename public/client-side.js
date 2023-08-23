@@ -168,6 +168,30 @@ window.addEventListener("keyup", (e) => {
   socket.emit('updatePlayerInput', { keyData });
 });
 
+// Ping check
+const randRange = (min, max) => Math.floor(Math.random() * (max - min)) + min;
+const arrAvg = arr => arr.reduce((a, b) => a + b) / arr.length;
+var pendingPingChecks = {};
+const measuredPings = [];
+var avgPing = 0;
+setInterval(() => {
+  const timestamp = performance.now();
+  const requestId = randRange(10000000).toString();
+  pendingPingChecks[requestId] = timestamp
+  socket.emit("checkPingRequest", { requestId });
+}, 1000);
+socket.on("checkPingResponse", ({ requestId }) => {
+  const responseTimestamp = performance.now();
+  const requestTimestamp = pendingPingChecks[requestId];
+  delete pendingPingChecks[requestId];
+  measuredPings.push((responseTimestamp - requestTimestamp) / 2);
+  if (measuredPings.length > 5) {
+    measuredPings.shift();
+  }
+  avgPing = arrAvg(measuredPings);
+  console.log(avgPing);
+})
+
 const INTERPOLATION_DISPLAY_MS = 100;
 
 function getWrappingTimesIndex(timestamp, timeQueue) {
@@ -274,21 +298,6 @@ function drawSquaresSimple(highResTime) {
 
   gameGraphics.clear();
   gameGraphics.lineStyle(0, 0xff0000);
-  // for (const [curPlayerId, curPosition] of Object.entries(playerStoredPositions)) {
-  //   if (playerColors[curPlayerId]) {
-  //     gameGraphics.beginFill(playerColors[curPlayerId]);
-  //   } else {
-  //     gameGraphics.beginFill(0xff0000);
-  //   }
-  //   // console.log(curPlayerId, playerId, playerStoredPositions, curPlayerId === playerId)
-  //   if (curPlayerId === playerId) {
-  //     gameGraphics.drawRect(playerPredictedPosition.x, playerPredictedPosition.y, 20, 20);
-  //   } else {
-  //     gameGraphics.drawRect(curPosition.x, curPosition.y, 20, 20);
-
-  //     // const interpolationFactor = // TODO;
-  //   }
-  // }
   for (const [curPlayerId, curPosition] of Object.entries(timestampedStoredPositions)) {
     if (playerColors[curPlayerId]) {
       gameGraphics.beginFill(playerColors[curPlayerId]);
@@ -322,3 +331,4 @@ function animationLoop(highResTime) {
 // clientPhysicsLoop(Date.now());
 // New physics/animation loop
 window.requestAnimationFrame(animationLoop);
+

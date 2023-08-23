@@ -18,6 +18,7 @@ const io = require("socket.io")(http);
  *  - track moves per-frame, then use latency + server-time to discard old moves
  *    and recalculate whenever the server updates
  *  - helper fxns for interpolation on client side
+ *  - enable TS
  */
 
 const port = 3000;

@@ -59,22 +59,40 @@ socket.on("updatePlayerColors", (newPlayerColors) => {
 });
 
 var playerStoredPositions = {};
-var playerStoredPositionsArr = [];
+var timestampedStoredPositions = {};
 var mainPlayerServerPosition;
 var mainPlayerClientPosition;
 socket.on("updatePos", ({playerPositions: newPlayerPositions, time}) => {
   playerStoredPositions = newPlayerPositions;
-  const newPlayerPositionsEntry = {
-    timestamp: performance.now(),
-    positions: newPlayerPositions
+
+  const updateReceivedTime = performance.now();
+  for (const [curPlayerId, curPlayerPosition] of Object.entries(newPlayerPositions)) {
+    const newTimestampedPosition = {
+      timestamp: updateReceivedTime,
+      ...curPlayerPosition
+    }
+    if (!timestampedStoredPositions[curPlayerId]) {
+      timestampedStoredPositions[curPlayerId] = {
+        newestPosition: newTimestampedPosition,
+        previousPosition: {
+          timestamp: updateReceivedTime - SERVER_TIME_MS,
+          ...curPlayerPosition
+        }
+      }
+    } else {
+      timestampedStoredPositions[curPlayerId].previousPosition = timestampedStoredPositions[curPlayerId].newestPosition;
+      timestampedStoredPositions[curPlayerId].newestPosition = newTimestampedPosition;
+    }
   }
-  playerStoredPositionsArr.push(newPlayerPositionsEntry);
-  if (playerStoredPositionsArr.length < 2) {
-    playerStoredPositionsArr.push(newPlayerPositionsEntry);
+
+  // Remove disconnected players
+  const playerIdsReceived = Object.keys(newPlayerPositions);
+  for (const curPlayerId of Object.keys(timestampedStoredPositions)) {
+    if (!playerIdsReceived.includes(curPlayerId)) {
+      delete timestampedStoredPositions[curPlayerId]
+    }
   }
-  if (playerStoredPositionsArr.length > 2) {
-    playerStoredPositionsArr.shift();
-  }
+
   mainPlayerServerPosition = { ...newPlayerPositions[playerId] };
   if (mainPlayerClientPosition == null) {
     mainPlayerClientPosition = { ...newPlayerPositions[playerId] };
@@ -256,19 +274,41 @@ function drawSquaresSimple(highResTime) {
 
   gameGraphics.clear();
   gameGraphics.lineStyle(0, 0xff0000);
-  for (const [curPlayerId, curPosition] of Object.entries(playerStoredPositions)) {
+  // for (const [curPlayerId, curPosition] of Object.entries(playerStoredPositions)) {
+  //   if (playerColors[curPlayerId]) {
+  //     gameGraphics.beginFill(playerColors[curPlayerId]);
+  //   } else {
+  //     gameGraphics.beginFill(0xff0000);
+  //   }
+  //   // console.log(curPlayerId, playerId, playerStoredPositions, curPlayerId === playerId)
+  //   if (curPlayerId === playerId) {
+  //     gameGraphics.drawRect(playerPredictedPosition.x, playerPredictedPosition.y, 20, 20);
+  //   } else {
+  //     gameGraphics.drawRect(curPosition.x, curPosition.y, 20, 20);
+
+  //     // const interpolationFactor = // TODO;
+  //   }
+  // }
+  for (const [curPlayerId, curPosition] of Object.entries(timestampedStoredPositions)) {
     if (playerColors[curPlayerId]) {
       gameGraphics.beginFill(playerColors[curPlayerId]);
     } else {
       gameGraphics.beginFill(0xff0000);
     }
-    // console.log(curPlayerId, playerId, playerStoredPositions, curPlayerId === playerId)
     if (curPlayerId === playerId) {
       gameGraphics.drawRect(playerPredictedPosition.x, playerPredictedPosition.y, 20, 20);
     } else {
-      gameGraphics.drawRect(curPosition.x, curPosition.y, 20, 20);
+      const xDiff = curPosition.newestPosition.x - curPosition.previousPosition.x;
+      const yDiff = curPosition.newestPosition.y - curPosition.previousPosition.y;
+      const timeDiff = curPosition.newestPosition.timestamp - curPosition.previousPosition.timestamp;
+      const timeSinceNewestPosition = highResTime - curPosition.newestPosition.timestamp;
 
-      // const interpolationFactor = // TODO;
+      const interpolationFactor = timeSinceNewestPosition / timeDiff;
+
+      const posX = curPosition.previousPosition.x + (xDiff * interpolationFactor); 
+      const posY = curPosition.previousPosition.y + (yDiff * interpolationFactor); 
+
+      gameGraphics.drawRect(posX, posY, 20, 20);
     }
   }
 }

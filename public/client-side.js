@@ -11,13 +11,16 @@ var playerId;
 //   textP.innerText += data;
 // });
 
+const gameContainerElement = document.getElementById("game-container");
+const pingDisplay = document.getElementById("ping");
+
 const app = new PIXI.Application({
   width: 400,
   height: 400,
   backgroundColor: 0x1099bb,
   resolution: window.devicePixelRatio || 1,
 });
-document.body.appendChild(app.view);
+gameContainerElement.appendChild(app.view);
 
 const gameContainer = new PIXI.Container();
 app.stage.addChild(gameContainer);
@@ -189,7 +192,8 @@ socket.on("checkPingResponse", ({ requestId }) => {
     measuredPings.shift();
   }
   avgPing = arrAvg(measuredPings);
-  console.log(avgPing);
+  if (avgPing == NaN) console.log([...measuredPings])
+  pingDisplay.innerText = Math.round(avgPing);
 })
 
 const INTERPOLATION_DISPLAY_MS = 100;

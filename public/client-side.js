@@ -188,7 +188,7 @@ const measuredPings = [];
 var avgPing = 0;
 setInterval(() => {
   const timestamp = performance.now();
-  const requestId = randRange(10000000).toString();
+  const requestId = randRange(0, 10000000).toString();
   pendingPingChecks[requestId] = timestamp
   socket.emit("checkPingRequest", { requestId });
 }, 1000);

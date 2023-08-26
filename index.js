@@ -2,6 +2,7 @@ const express = require("express");
 const app = express();
 const http = require("http").createServer(app);
 const io = require("socket.io")(http);
+const cloneDeep = require("lodash/cloneDeep");
 
 /**
  * TODO:
@@ -53,7 +54,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on('checkPingRequest', ({ requestId }) => {
-    socket.emit('checkPingResponse', { requestId })
+    setTimeout(() => socket.emit('checkPingResponse', { requestId }), 800) // TODO: REVERT
   })
 
   socket.on("disconnect", () => {
@@ -70,7 +71,8 @@ http.listen(port, () =>
 
 var serverLoopVar;
 function serverLoop() {
-  io.emit("updatePos", {playerPositions, time: Date.now()});
+  const positionsToEmit = {playerPositions: cloneDeep(playerPositions), time: Date.now()}; //TODO: REVERT
+  setTimeout(() => io.emit("updatePos", positionsToEmit), 800); // TODO: REVERT
   serverLoopVar = setTimeout(serverLoop, 45);
 }
 

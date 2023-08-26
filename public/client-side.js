@@ -4,6 +4,9 @@ const PLAYER_SPEED_PER_MS = .25; //Player speed per millisecond
 
 var playerId;
 
+const FRAME_TIME_MS = 1000 / 60;
+const SERVER_TIME_MS = 1000 / 20;
+
 // const textP = document.getElementById("text");
 
 // socket.on("printChar", (data) => {
@@ -61,6 +64,7 @@ socket.on("updatePlayerColors", (newPlayerColors) => {
 var playerStoredPositions = {};
 var timestampedStoredPositions = {};
 var mainPlayerServerPosition;
+var lastServerUpdateTimestamp;
 var mainPlayerClientPosition;
 socket.on("updatePos", ({playerPositions: newPlayerPositions, time}) => {
   playerStoredPositions = newPlayerPositions;
@@ -94,6 +98,7 @@ socket.on("updatePos", ({playerPositions: newPlayerPositions, time}) => {
   }
 
   mainPlayerServerPosition = { ...newPlayerPositions[playerId] };
+  lastServerUpdateTimestamp = updateReceivedTime;
   if (mainPlayerClientPosition == null) {
     mainPlayerClientPosition = { ...newPlayerPositions[playerId] };
   }
@@ -124,6 +129,8 @@ socket.on("updatePos", ({playerPositions: newPlayerPositions, time}) => {
   }
 });
 
+var logData = false;
+
 const keyData = { up: false, right: false, down: false, left: false };
 window.addEventListener("keydown", (e) => {
   switch (e.key) {
@@ -144,12 +151,16 @@ window.addEventListener("keydown", (e) => {
       mainPlayerClientPosition.x += 50;
       mainPlayerClientPosition.y += 50;
       break;
+    case "p":
+      // For testing
+      logData = !logData;
   }
   
   socket.emit('updatePlayerInput', { keyData });
 });
 
 window.addEventListener("keyup", (e) => {
+  console.log("keyup", e.key);
   switch (e.key) {
     case "ArrowUp":
       keyData.up = false;
@@ -169,6 +180,7 @@ window.addEventListener("keyup", (e) => {
 });
 
 // Ping check
+const pingTextBox = document.getElementById("ping");
 const randRange = (min, max) => Math.floor(Math.random() * (max - min)) + min;
 const arrAvg = arr => arr.reduce((a, b) => a + b) / arr.length;
 var pendingPingChecks = {};
@@ -184,12 +196,13 @@ socket.on("checkPingResponse", ({ requestId }) => {
   const responseTimestamp = performance.now();
   const requestTimestamp = pendingPingChecks[requestId];
   delete pendingPingChecks[requestId];
-  measuredPings.push((responseTimestamp - requestTimestamp) / 2);
+  measuredPings.push((responseTimestamp - requestTimestamp) / 2 * 2); // TODO: REMOVE TEMPORARY *2, it's just for testing
   if (measuredPings.length > 5) {
     measuredPings.shift();
   }
   avgPing = arrAvg(measuredPings);
-  console.log(avgPing);
+  pingTextBox.innerText = avgPing.toString();
+  // console.log(avgPing);
 })
 
 const INTERPOLATION_DISPLAY_MS = 100;
@@ -265,8 +278,7 @@ function clientPhysicsLoop(prevTime) {
   //TODO: Change this to RequestAnimationFrame
 }
 
-const FRAME_TIME_MS = 1000 / 60;
-const SERVER_TIME_MS = 1000 / 20;
+var playerMovementTimeline = [];
 var newestFrameTimestamp = performance.now();
 function drawSquaresSimple(highResTime) {
 
@@ -282,6 +294,33 @@ function drawSquaresSimple(highResTime) {
       mainPlayerClientPosition.x -= (mainPlayerClientPosition.x - mainPlayerServerPosition.x) * .2
       mainPlayerClientPosition.y -= (mainPlayerClientPosition.y - mainPlayerServerPosition.y) * .2
 
+      // Timeline-based movement based on server ping
+      let dx = 0;
+      let dy = 0;
+      if (keyData.up) dy -= PLAYER_SPEED_PER_MS * FRAME_TIME_MS;
+      if (keyData.right) dx += PLAYER_SPEED_PER_MS * FRAME_TIME_MS;
+      if (keyData.down) dy += PLAYER_SPEED_PER_MS * FRAME_TIME_MS;
+      if (keyData.left) dx -= PLAYER_SPEED_PER_MS * FRAME_TIME_MS;
+      if (dx != 0 || dy != 0) {
+        playerMovementTimeline.push({ timestamp: newestFrameTimestamp, dx, dy });
+      }
+      // if (logData) console.log(mainPlayerServerPosition, playerX, playerY, playerMovementTimeline);
+      while (playerMovementTimeline.length > 0 && playerMovementTimeline[0].timestamp < lastServerUpdateTimestamp - avgPing) {
+        playerMovementTimeline.shift();
+      }
+
+
+      if (logData) {
+        // console.log([...playerMovementTimeline], lastServerUpdateTimestamp, newestFrameTimestamp, avgPing)
+        const totalMovement = playerMovementTimeline.reduce(({dx: accumX, dy: accumY}, {dx: newX, dy: newY}) => ({dx: accumX + newX, dy: accumY + newY}), { dx: 0, dy: 0})
+        console.log(mainPlayerServerPosition, 
+          totalMovement,
+          {
+            x: mainPlayerServerPosition.x + totalMovement.dx,
+            y: mainPlayerServerPosition.y + totalMovement.dy,
+          }
+          );
+        }
       newestFrameTimestamp += FRAME_TIME_MS;
     }
   }
@@ -305,7 +344,16 @@ function drawSquaresSimple(highResTime) {
       gameGraphics.beginFill(0xff0000);
     }
     if (curPlayerId === playerId) {
-      gameGraphics.drawRect(playerPredictedPosition.x, playerPredictedPosition.y, 20, 20);
+      // gameGraphics.drawRect(playerPredictedPosition.x, playerPredictedPosition.y, 20, 20);
+      // gameGraphics.drawRect(curPosition.newestPosition.x, curPosition.newestPosition.y, 20, 20); //TODO: REVERT
+
+      let playerX = mainPlayerServerPosition.x;
+      let playerY = mainPlayerServerPosition.y;
+      for (const {dx, dy} of playerMovementTimeline) {
+        playerX += dx;
+        playerY += dy;
+      }
+      gameGraphics.drawRect(playerX, playerY, 20, 20);
     } else {
       const xDiff = curPosition.newestPosition.x - curPosition.previousPosition.x;
       const yDiff = curPosition.newestPosition.y - curPosition.previousPosition.y;

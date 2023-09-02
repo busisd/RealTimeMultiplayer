@@ -1,7 +1,9 @@
 const express = require("express");
+const { setTimeout } = require("timers");
 const app = express();
 const http = require("http").createServer(app);
 const io = require("socket.io")(http);
+const _ = require("lodash")
 
 /**
  * TODO:
@@ -17,8 +19,12 @@ const io = require("socket.io")(http);
  *  - shared "physics" library for server and client
  *  - track moves per-frame, then use latency + server-time to discard old moves
  *    and recalculate whenever the server updates
+ *    - Use for server-predicted-position
  *  - helper fxns for interpolation on client side
  *  - enable TS
+ *  - maybe:
+ *    - Keep a buffer of player inputs, received once per frame
+ *      - Apply them once per server-tick, and tell the client the ID of the latest one processed
  */
 
 const port = 3000;

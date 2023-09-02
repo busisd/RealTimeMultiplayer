@@ -4,6 +4,8 @@ const FRAME_TIME_MS = 1000 / 60;
 const SERVER_TIME_MS = 1000 / 20;
 const PLAYER_SPEED_PER_MS = .25;
 
+const STARTING_POSITION = { x: 20, y: 20 };
+
 const gameContainerElement = document.getElementById("game-container");
 const pingDisplay = document.getElementById("ping");
 
@@ -37,15 +39,10 @@ socket.on("updatePlayerColors", (newPlayerColors) => {
   playerColors = newPlayerColors;
 });
 
+var mainPlayerClientPosition = { ...STARTING_POSITION };
+var mainPlayerServerPosition = { ...STARTING_POSITION };
+var lastServerUpdateTimestamp = performance.now();
 var timestampedStoredPositions = {};
-// We store the newest received updates from the server,
-// then do the actual updates in the client physics loop.
-// This stops position from changing between physics ticks.
-var newestReceivedMainPlayerServerPosition;
-var mainPlayerServerPosition;
-var newestReceivedLastServerUpdateTimestamp;
-var lastServerUpdateTimestamp;
-var mainPlayerClientPosition;
 socket.on("updatePos", ({ playerPositions: newPlayerPositions }) => {
   const updateReceivedTime = performance.now();
   for (const [curPlayerId, curPlayerPosition] of Object.entries(newPlayerPositions)) {
@@ -75,12 +72,8 @@ socket.on("updatePos", ({ playerPositions: newPlayerPositions }) => {
     }
   }
 
-  if (logData) console.log("Received server update!")
-  newestReceivedMainPlayerServerPosition = { ...newPlayerPositions[playerId] };
-  newestReceivedLastServerUpdateTimestamp = updateReceivedTime;
-  if (mainPlayerClientPosition == null && newPlayerPositions[playerId] != null) {
-    mainPlayerClientPosition = { ...newPlayerPositions[playerId] };
-  }
+  mainPlayerServerPosition = { ...(newPlayerPositions[playerId] ?? { ...STARTING_POSITION }) };
+  lastServerUpdateTimestamp = updateReceivedTime;
 });
 
 var logData = false;
@@ -147,7 +140,11 @@ socket.on("checkPingResponse", ({ requestId }) => {
   const responseTimestamp = performance.now();
   const requestTimestamp = pendingPingChecks[requestId];
   delete pendingPingChecks[requestId];
-  measuredPings.push((responseTimestamp - requestTimestamp) / 2 * 2); // TODO: REMOVE TEMPORARY *2, it's just for testing
+  // NOTE: If using simulated ping, double measured ping
+  // When simulating ping, the server receives the request
+  // instantly and delays the response; typically we assume
+  // approximately the same delay in both direactions
+  measuredPings.push((responseTimestamp - requestTimestamp) / 2 * 2);
   if (measuredPings.length > 5) {
     measuredPings.shift();
   }
@@ -157,65 +154,44 @@ socket.on("checkPingResponse", ({ requestId }) => {
 
 var playerMovementTimeline = [];
 var newestFrameTimestamp = performance.now();
-function drawSquaresSimple(highResTime) {
-  if (mainPlayerClientPosition) {
-    while (highResTime > newestFrameTimestamp + FRAME_TIME_MS) {
-      mainPlayerServerPosition = newestReceivedMainPlayerServerPosition;
-      lastServerUpdateTimestamp = newestReceivedLastServerUpdateTimestamp
-      
-      // Move based on inputs
-      if (keyData.up) mainPlayerClientPosition.y -= PLAYER_SPEED_PER_MS * FRAME_TIME_MS;
-      if (keyData.right) mainPlayerClientPosition.x += PLAYER_SPEED_PER_MS * FRAME_TIME_MS;
-      if (keyData.down) mainPlayerClientPosition.y += PLAYER_SPEED_PER_MS * FRAME_TIME_MS;
-      if (keyData.left) mainPlayerClientPosition.x -= PLAYER_SPEED_PER_MS * FRAME_TIME_MS;
+const doPhysics = (highResTime) => {
+  while (highResTime > newestFrameTimestamp + FRAME_TIME_MS) {
+    // Get input data for this physics tick
+    let dx = 0;
+    let dy = 0;
+    if (keyData.up) dy -= PLAYER_SPEED_PER_MS * FRAME_TIME_MS;
+    if (keyData.right) dx += PLAYER_SPEED_PER_MS * FRAME_TIME_MS;
+    if (keyData.down) dy += PLAYER_SPEED_PER_MS * FRAME_TIME_MS;
+    if (keyData.left) dx -= PLAYER_SPEED_PER_MS * FRAME_TIME_MS;
 
-      // Move the player towards where the server believes them to be
-      mainPlayerClientPosition.x -= (mainPlayerClientPosition.x - mainPlayerServerPosition.x) * .2
-      mainPlayerClientPosition.y -= (mainPlayerClientPosition.y - mainPlayerServerPosition.y) * .2
+    // Move based on inputs
+    mainPlayerClientPosition.x += dx;
+    mainPlayerClientPosition.y += dy;
 
-      // Timeline-based movement based on server ping
-      let dx = 0;
-      let dy = 0;
-      if (keyData.up) dy -= PLAYER_SPEED_PER_MS * FRAME_TIME_MS;
-      if (keyData.right) dx += PLAYER_SPEED_PER_MS * FRAME_TIME_MS;
-      if (keyData.down) dy += PLAYER_SPEED_PER_MS * FRAME_TIME_MS;
-      if (keyData.left) dx -= PLAYER_SPEED_PER_MS * FRAME_TIME_MS;
-      if (dx != 0 || dy != 0) {
-        playerMovementTimeline.push({ timestamp: newestFrameTimestamp, dx, dy });
-      }
-      while (playerMovementTimeline.length > 0 && playerMovementTimeline[0].timestamp < lastServerUpdateTimestamp - avgPing) {
-        playerMovementTimeline.shift();
-      }
-
-      if (logData) {
-        // console.log([...playerMovementTimeline], lastServerUpdateTimestamp, newestFrameTimestamp, avgPing)
-        const totalMovement = playerMovementTimeline.reduce(({ dx: accumX, dy: accumY }, { dx: newX, dy: newY }) => ({ dx: accumX + newX, dy: accumY + newY }), { dx: 0, dy: 0 })
-        console.log(
-          // mainPlayerServerPosition,
-          // totalMovement,
-          "A",
-          {
-            x: Math.round(mainPlayerServerPosition.x + totalMovement.dx),
-            y: Math.round(mainPlayerServerPosition.y + totalMovement.dy),
-          },
-          [...playerMovementTimeline]
-        );
-      }
-
-      newestFrameTimestamp += FRAME_TIME_MS;
+    // Timeline-based movement based on server ping
+    if (dx !== 0 || dy !== 0) {
+      playerMovementTimeline.push({ timestamp: newestFrameTimestamp, dx, dy });
     }
-  }
+    while (playerMovementTimeline.length > 0 && playerMovementTimeline[0].timestamp < lastServerUpdateTimestamp - avgPing) {
+      playerMovementTimeline.shift();
+    }
+    const totalTimelineMovement = playerMovementTimeline.reduce(
+      ({ dx: accumX, dy: accumY }, { dx: newX, dy: newY }) => ({ dx: accumX + newX, dy: accumY + newY }), { dx: 0, dy: 0 }
+    );
+    const mainPlayerServerTimelinePosition = {
+      x: mainPlayerServerPosition.x + totalTimelineMovement.dx,
+      y: mainPlayerServerPosition.y + totalTimelineMovement.dy
+    };
 
-  let playerPredictedPosition;
-  if (mainPlayerClientPosition) {
-    playerPredictedPosition = { ...mainPlayerClientPosition };
-    const frameInterpolationTime = highResTime - newestFrameTimestamp;
-    if (keyData.up) playerPredictedPosition.y -= PLAYER_SPEED_PER_MS * frameInterpolationTime;
-    if (keyData.right) playerPredictedPosition.x += PLAYER_SPEED_PER_MS * frameInterpolationTime;
-    if (keyData.down) playerPredictedPosition.y += PLAYER_SPEED_PER_MS * frameInterpolationTime;
-    if (keyData.left) playerPredictedPosition.x -= PLAYER_SPEED_PER_MS * frameInterpolationTime;
-  }
+    // Move the player towards where the server position and timeline predict them to be
+    mainPlayerClientPosition.x -= (mainPlayerClientPosition.x - mainPlayerServerTimelinePosition.x) * .08
+    mainPlayerClientPosition.y -= (mainPlayerClientPosition.y - mainPlayerServerTimelinePosition.y) * .08
 
+    newestFrameTimestamp += FRAME_TIME_MS;
+  }
+}
+
+const drawPlayers = (highResTime) => {
   gameGraphics.clear();
   gameGraphics.lineStyle(0, 0xff0000);
   for (const [curPlayerId, curPosition] of Object.entries(timestampedStoredPositions)) {
@@ -225,35 +201,23 @@ function drawSquaresSimple(highResTime) {
       gameGraphics.beginFill(0xff0000);
     }
     if (curPlayerId === playerId) {
-      // gameGraphics.drawRect(playerPredictedPosition.x, playerPredictedPosition.y, 20, 20);
+      // Interpolate movement between physics ticks for the main player
+      const frameInterpolationTime = highResTime - newestFrameTimestamp;
+      const playerPredictedPosition = { ...mainPlayerClientPosition };
+      if (keyData.up) playerPredictedPosition.y -= PLAYER_SPEED_PER_MS * frameInterpolationTime;
+      if (keyData.right) playerPredictedPosition.x += PLAYER_SPEED_PER_MS * frameInterpolationTime;
+      if (keyData.down) playerPredictedPosition.y += PLAYER_SPEED_PER_MS * frameInterpolationTime;
+      if (keyData.left) playerPredictedPosition.x -= PLAYER_SPEED_PER_MS * frameInterpolationTime;
 
-      let playerX = mainPlayerServerPosition.x;
-      let playerY = mainPlayerServerPosition.y;
-      for (const { dx, dy } of playerMovementTimeline) {
-        playerX += dx;
-        playerY += dy;
-      }
-
-      if (logData) {
-        console.log(
-          "B",
-          {
-            x: playerX,
-            y: playerY,
-          },
-          [...playerMovementTimeline]
-        );
-      }
-
-      gameGraphics.drawRect(playerX, playerY, 20, 20);
+      gameGraphics.drawRect(playerPredictedPosition.x, playerPredictedPosition.y, 20, 20);
     } else {
+      // Interpolate movement between received positions for other players
+      const timeBetweenPositions = curPosition.newestPosition.timestamp - curPosition.previousPosition.timestamp;
+      const timeSinceNewestPosition = highResTime - curPosition.newestPosition.timestamp;
+      const interpolationFactor = timeSinceNewestPosition / timeBetweenPositions;
+
       const xDiff = curPosition.newestPosition.x - curPosition.previousPosition.x;
       const yDiff = curPosition.newestPosition.y - curPosition.previousPosition.y;
-      const timeDiff = curPosition.newestPosition.timestamp - curPosition.previousPosition.timestamp;
-      const timeSinceNewestPosition = highResTime - curPosition.newestPosition.timestamp;
-
-      const interpolationFactor = timeSinceNewestPosition / timeDiff;
-
       const posX = curPosition.previousPosition.x + (xDiff * interpolationFactor);
       const posY = curPosition.previousPosition.y + (yDiff * interpolationFactor);
 
@@ -262,10 +226,13 @@ function drawSquaresSimple(highResTime) {
   }
 }
 
-function animationLoop(highResTime) {
-  drawSquaresSimple(highResTime);
-  window.requestAnimationFrame(animationLoop);
+function clientTick(highResTime) {
+  doPhysics(highResTime);
+  drawPlayers(highResTime);
 }
 
-window.requestAnimationFrame(animationLoop);
-
+function clientLoop(highResTime) {
+  clientTick(highResTime);
+  window.requestAnimationFrame(clientLoop);
+}
+window.requestAnimationFrame(clientLoop);

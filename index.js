@@ -62,9 +62,10 @@ io.on("connection", (socket) => {
   });
 
   socket.on('checkPingRequest', ({ requestId }) => {
-    socket.emit('checkPingResponse', { requestId })
+    // TODO: REVERT
+    setTimeout(() => socket.emit('checkPingResponse', { requestId }), 600);
   })
-
+  
   socket.on("disconnect", () => {
     console.log(`user ${socket.data.playerId} disconnected`);
     delete playerPositions[socket.data.playerId];
@@ -95,7 +96,9 @@ const doPhysics = (deltaTime) => {
 }
 
 const sendPositionUpdates = () => {
-  io.emit("updatePos", {playerPositions, time: Date.now()});
+  // TODO: REVERT
+  const posToUpdate = _.cloneDeep(playerPositions);
+  setTimeout(() => io.emit("updatePos", {playerPositions: posToUpdate, time: Date.now()}), 600);
 }
 
 const serverTick = () => {
